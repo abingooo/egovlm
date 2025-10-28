@@ -21,19 +21,19 @@ if __name__ == "__main__":
     # 获取深度数据
     dep_data = latest_data['depth_data']
     # 创建对象检测器，指定检测类型为box
-    detector = ImageObjectDetector(detection_type="box")
+    detector = ImageObjectDetector(detection_type="flypoint")
     start_time = time.time()
     # 检测对象（设置verbose=False避免重复打印）
     detections = detector.detect_objects(
         rgb_image=rgb_image,
-        objects_to_detect=["bed","chair"],
+        control_instruction=["fly to the water dispenser","fly to the bed"],
         verbose=False
     )
     print(f"推理时间: {time.time() - start_time:.2f} 秒")
     print(detections)
 
     # 使用便捷函数绘制并显示结果
-    draw_and_save(rgb_image, detections, detection_type="box", save_path="./detection_result.jpg")
+    draw_and_save(rgb_image, detections, detection_type=detector.detection_type, save_path="./detection_result.jpg")
 
     # 使用solve_utils中的函数计算所有检测对象的深度值
     depth_values = calculate_depth_from_detections(detections, dep_data)

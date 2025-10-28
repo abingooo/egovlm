@@ -20,7 +20,7 @@ class ImageObjectDetector:
             model_id: 使用的模型ID
             api_key: API密钥
             base_url: API基础URL
-            detection_type: 检测类型，"point"或"box"，默认为"point"
+            detection_type: 检测类型，"point"、"box"、"flypoint"或"flybox"，默认为"point"
         """
         self.model_id = model_id
         self.detection_type = detection_type
@@ -46,11 +46,11 @@ class ImageObjectDetector:
     
     def create_prompt(self, objects_to_detect, prompt_type="point"):
         """
-        创建检测提示词
+        创建检测提示词prompt
         
         Args:
-            objects_to_detect: 要检测的对象列表
-            prompt_type: 提示词类型，"point"或"box"
+            objects_to_detect: 要检测的对象列表或控制指令
+            prompt_type: 提示词类型，"point"、"box"、"flypoint"或"flybox"
             
         Returns:
             格式化的提示词
@@ -63,7 +63,7 @@ class ImageObjectDetector:
               "label": <label1>}}, ...]. The points are in [y, x] format
               normalized to 0-1000.
             """
-        else:  # prompt_type == "box"
+        elif prompt_type == "box":
             return f"""
           Return bounding boxes as a JSON array with labels. Never return masks
           or code fencing. Limit to these objects: {objects_to_detect}. Include as many objects as you
@@ -74,15 +74,51 @@ class ImageObjectDetector:
           "label": <label for the object>}}] normalized to 0-1000. The values in
           box_2d must only be integers
           """
+        elif prompt_type == "flypoint":
+            return f"""
+              Analyze the drone control instruction: '{objects_to_detect}'
+              
+              1. Extract the target object mentioned in the instruction
+              2. Identify the specific object in the image if there are multiple similar objects
+                 (based on description like "on the left", "larger", etc.)
+              3. Point to the center of the target object in the image
+              
+              Return the answer as a JSON array with the following format:
+              [{{"point": [y, x], "label": "<target_object>"}}] where:
+              - point is in [y, x] format normalized to 0-1000
+              - label is the extracted target object name
+              
+              Never return any additional text, markdown formatting, or explanations.
+              Only return the JSON array as specified.
+            """
+        else:  # prompt_type == "flybox":
+            return f"""
+              Analyze the drone control instruction: '{objects_to_detect}'
+              
+              1. Extract the target object mentioned in the instruction
+              2. Identify the specific object in the image if there are multiple similar objects
+                 (based on description like "on the left", "larger", "blue", etc.)
+              3. Draw a bounding box around the entire target object
+              
+              Return the answer as a JSON array with the following format:
+              [{{"box_2d": [ymin, xmin, ymax, xmax], "label": "<target_object>"}}] where:
+              - box_2d is [ymin, xmin, ymax, xmax] format normalized to 0-1000
+              - All values in box_2d must be integers
+              - label is the extracted target object name
+              
+              Never return any additional text, markdown formatting, or explanations.
+              Only return the JSON array as specified.
+            """
     
-    def detect_objects(self, rgb_image, objects_to_detect, 
+    def detect_objects(self, rgb_image, control_instruction, 
                       temperature=0.5, jpeg_quality=60, verbose=True):
         """
-        检测图像中的对象
+        检测图像中的对象，支持从控制指令中提取目标
         
         Args:
             rgb_image: RGB格式的图像数据
-            objects_to_detect: 要检测的对象列表
+            control_instruction: 控制指令字符串（如"fly to the chair on the left"）
+                                或传统的对象名称列表
             temperature: 生成内容的温度参数
             jpeg_quality: JPEG编码质量
             verbose: 是否打印详细信息
@@ -98,7 +134,7 @@ class ImageObjectDetector:
         image_bytes = self.prepare_image(rgb_image, jpeg_quality)
         
         # 创建提示词，使用实例变量detection_type
-        prompt = self.create_prompt(objects_to_detect, self.detection_type)
+        prompt = self.create_prompt(control_instruction, self.detection_type)
         
         # 调用模型进行推理
         image_response = self.client.models.generate_content(
@@ -180,28 +216,45 @@ class ImageObjectDetector:
         
         return detections
 
-# # 使用示例
-# if __name__ == "__main__":
-#     # 导入日志读取模块
-#     from lib.logread import create_reader
+# 使用示例
+if __name__ == "__main__":
+    # 导入日志读取模块
+    from lib.logread import create_reader
     
-#     # 创建日志读取器
-#     reader = create_reader('./log')
+    # 创建日志读取器
+    reader = create_reader('./log')
     
-#     # 读取最新的日志数据
-#     latest_data = reader.read_latest_log()
+    # 读取最新的日志数据
+    latest_data = reader.read_latest_log()
     
-#     # 获取RGB图像
-#     rgb_image = latest_data['color_image']
+    # 获取RGB图像
+    rgb_image = latest_data['color_image']
     
-#     # 创建对象检测器
-#     detector = ImageObjectDetector()
+    # 创建无人机控制模式的对象检测器（使用flypoint类型）
+    drone_detector = ImageObjectDetector(detection_type="flypoint")
     
-#     # 检测对象（设置verbose=False避免重复打印）
-#     detections = detector.detect_objects(
-#         rgb_image=rgb_image,
-#         objects_to_detect=["Trash can","the chair on the right"],
-#         prompt_type="point",
-#         verbose=False
-#     )
-#     print(detections)
+    # 使用控制指令进行检测
+    detections = drone_detector.detect_objects(
+        rgb_image=rgb_image,
+        control_instruction="fly to the chair on the left",
+        verbose=True
+    )
+    print("无人机控制指令检测结果:", detections)
+    
+    # 也可以使用边界框检测
+    box_detector = ImageObjectDetector(detection_type="flybox")
+    box_detections = box_detector.detect_objects(
+        rgb_image=rgb_image,
+        control_instruction="Fly around the tree in circles",
+        verbose=True
+    )
+    print("无人机控制指令边界框检测结果:", box_detections)
+    
+    # 仍然支持传统的对象检测方式
+    traditional_detector = ImageObjectDetector(detection_type="point")
+    traditional_detections = traditional_detector.detect_objects(
+        rgb_image=rgb_image,
+        control_instruction="chair",  # 这里传入的是对象名称
+        verbose=False
+    )
+    print("传统对象检测结果:", traditional_detections)

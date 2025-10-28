@@ -161,9 +161,9 @@ class DrawUtils:
         Returns:
             绘制后的图像
         """
-        if detection_type == "point":
+        if "point" in detection_type :
             return self.draw_point_detection(image, detections)
-        elif detection_type == "box":
+        elif "box" in detection_type :
             return self.draw_box_detection(image, detections)
         else:
             print(f"不支持的检测类型: {detection_type}")
