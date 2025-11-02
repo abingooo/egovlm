@@ -91,7 +91,7 @@ class ImageObjectDetector:
               Never return any additional text, markdown formatting, or explanations.
               Only return the JSON array as specified.
             """
-        else:  # prompt_type == "flybox":
+        elif prompt_type == "flybox":
             return f"""
               Analyze the drone control instruction: '{objects_to_detect}'
               
@@ -109,6 +109,94 @@ class ImageObjectDetector:
               Never return any additional text, markdown formatting, or explanations.
               Only return the JSON array as specified.
             """
+        
+        elif prompt_type == "waypoint":
+            return f"""
+        Act as a drone flight path planner analyzing images from the drone's front-facing camera.
+        
+        The image you see is captured by the drone's camera.
+        
+        The target object has the following 3D coordinates in the camera coordinate system (in meters):
+        - x: forward direction (positive values mean the object is ahead of the camera)
+        - y: left direction (positive values mean the object is to the left of the camera)
+        - z: upward direction (positive values mean the object is above the camera)
+        
+        IMPORTANT: All physical objects have volume. When planning the flight path, you must consider the object's size and maintain a safe distance (at least 0.5 meters) from the object at all times.
+        
+        For common objects:
+        - Water dispenser: approximately 0.3-0.4m in width, 0.3-0.4m in depth, 1.2-1.8m in height
+        - Furniture: typically 0.4-1.0m in width/depth, 0.4-2.0m in height
+        - Other objects: estimate their dimensions based on visual appearance
+        
+        Your task is to plan a safe flight path from the drone's current position to complete the control instruction: '{objects_to_detect}'.
+        
+        Please generate waypoints in 3D space coordinates (in meters) that will guide the drone from its starting position to complete the control instruction.
+        The waypoints should be generated based on the visual scene and the target object's marked position.
+        
+        Please ensure:
+        - The trajectory formed by all points is smooth and allows the drone to fly safely
+        - Maintain a minimum safety distance of 0.5 meters from all objects, including the target object
+        - Avoid obstacles present in the scene when planning the path
+        - The waypoints are reasonably distributed, neither too dense nor too sparse
+        - The path follows the most direct route while ensuring safety
+        - The path should be practical for real drone flight based on the camera's perspective
+        - The first waypoint should be the current position of the drone
+        - The last waypoint should be at a safe distance from the target object, never inside its estimated volume
+        The answer must follow this JSON format:
+        [{{"point": [y, x, z], "label": "<index>"}}, ...]
+        where:
+        - point is a 3D coordinate [y, x, z] in meters, following the camera coordinate system
+        - label is the corresponding point index, numbered sequentially starting from '0'
+        
+        Please return only the JSON formatted answer without any additional text or explanation.
+          """
+        elif prompt_type == "waypoint1":
+            return f"""
+        Act as a drone flight path planner analyzing images from the drone's front-facing camera.
+        
+        The image you see is captured by the drone's camera.
+        
+        The target object has the following 3D coordinates in the camera coordinate system (in meters):
+        - x: forward direction (positive values mean the object is ahead of the camera)
+        - y: left direction (positive values mean the object is to the left of the camera)
+        - z: upward direction (positive values mean the object is above the camera)
+        
+        IMPORTANT: All physical objects have volume. When planning the flight path, you must consider the object's size and maintain a safe distance from the object at all times.
+        
+        For common objects:
+        - Water dispenser: approximately 0.3-0.4m in width, 0.3-0.4m in depth, 1.2-1.8m in height
+        - Furniture: typically 0.4-1.0m in width/depth, 0.4-2.0m in height
+        - Other objects: estimate their dimensions based on visual appearance
+        
+        Your task is to plan a safe flight path from the drone's current position to complete the control instruction: '{objects_to_detect}'.
+        
+        Please generate waypoints in 3D space coordinates (in meters) that will guide the drone from its starting position to complete the control instruction.
+        The waypoints should be generated based on the visual scene and the target object's marked position.
+        
+        IMPORTANT: Analyze the instruction carefully:
+        - If the instruction contains "around" or "circle", this means the drone should fly in a circular path around the target object
+        - For such circling instructions, create waypoints that form a loop around the target object, maintaining a minimum safety distance of 1.0 meter from the object's estimated boundaries
+        - Ensure the flight path smoothly transitions from approaching the target to circling around it
+        - After circling, you may optionally include a return path back to a starting position if appropriate
+        
+        Please ensure:
+        - The trajectory formed by all points is smooth and allows the drone to fly safely
+        - Maintain a minimum safety distance of 0.5 meters from all objects for "fly to" instructions, and 1.0 meter for "fly around" instructions
+        - When estimating object boundaries, add extra safety margin to avoid collisions
+        - Avoid obstacles present in the scene when planning the path
+        - The waypoints are reasonably distributed, neither too dense nor too sparse
+        - The path follows the most direct route while ensuring safety
+        - The path should be practical for real drone flight based on the camera's perspective
+        - For "fly to" instructions: The first waypoint should be the current position of the drone, and the last waypoint should be at a safe distance from the target object
+        - For "fly around" instructions: Include waypoints for approaching the target, circling the target (at least 4 points to form a circular path while maintaining safe distance), and any necessary exit path
+        The answer must follow this JSON format:
+        [{{"point": [y, x, z], "label": "<index>"}}, ...]
+        where:
+        - point is a 3D coordinate [y, x, z] in meters, following the camera coordinate system
+        - label is the corresponding point index, numbered sequentially starting from '0'
+        
+        Please return only the JSON formatted answer without any additional text or explanation.
+          """
     
     def detect_objects(self, rgb_image, control_instruction, 
                       temperature=0.5, jpeg_quality=60, verbose=True):
@@ -187,15 +275,21 @@ class ImageObjectDetector:
             height, width = image_shape
             for detection in detections:
                 if "point" in detection:
-                    # 点坐标是[y, x]格式，归一化到0-1000
-                    y_norm, x_norm = detection["point"]
-                    # 转换为真实像素坐标
-                    x = int((x_norm / 1000.0) * width)
-                    y = int((y_norm / 1000.0) * height)
-                    # 确保坐标在有效范围内
-                    x = max(0, min(x, width - 1))
-                    y = max(0, min(y, height - 1))
-                    detection["point"] = [y, x]
+                    # 根据detection_type判断是2D坐标还是3D坐标
+                    if hasattr(self, 'detection_type') and (self.detection_type == "waypoint" or self.detection_type == "waypoint1"):
+                        # 3D坐标格式 [y, x, z]，单位为米，不需要转换
+                        # 直接保留原始3D坐标
+                        pass  # 3D坐标不需要转换为像素坐标
+                    else:
+                        # 2D坐标是[y, x]格式，归一化到0-1000
+                        y_norm, x_norm = detection["point"]
+                        # 转换为真实像素坐标
+                        x = int((x_norm / 1000.0) * width)
+                        y = int((y_norm / 1000.0) * height)
+                        # 确保坐标在有效范围内
+                        x = max(0, min(x, width - 1))
+                        y = max(0, min(y, height - 1))
+                        detection["point"] = [y, x]
                 elif "box_2d" in detection:
                     # 边界框坐标是[ymin, xmin, ymax, xmax]格式，归一化到0-1000
                     ymin, xmin, ymax, xmax = detection["box_2d"]
