@@ -36,7 +36,7 @@ def getCtrlCmd():
     """
     # 在实际应用中，这里可以从用户输入、配置文件或其他来源获取控制命令
     # 这里返回一个示例命令
-    return "fly to the tree."
+    return "fly to the box on the left."
 
 
 def getCameraData():
@@ -200,6 +200,8 @@ def get3DTargetModel(rgb_image, detect_result, depth_data):
                 object_dict_for3d['npoints'] = random_points
                 
                 object_dict_for3d_list.append(object_dict_for3d)
+                
+    ImageUtils.visualize_target3d_results(rgb_image, object_dict_for3d_list)
     
     # 对物体列表进行3d空间建模
     obj3dmodel_list = []
