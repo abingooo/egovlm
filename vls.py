@@ -36,7 +36,7 @@ def getCtrlCmd():
     """
     # 在实际应用中，这里可以从用户输入、配置文件或其他来源获取控制命令
     # 这里返回一个示例命令
-    return "fly to the box on the left."
+    return "fly to the tree."
 
 
 def getCameraData():
@@ -55,7 +55,7 @@ def getCameraData():
     else:
         reader = create_reader('./log')
         # 读取最新的日志数据
-        latest_data = reader.read_log_data('20251103_105035')
+        latest_data = reader.read_log_data('20251103_104830')
         # 获取RGB图像
         rgb_image = latest_data['color_image']
         # 获取深度数据
@@ -147,6 +147,11 @@ def get3DTargetModel(rgb_image, detect_result, depth_data):
     for index, detection in enumerate(detect_result):
         # 检查是否包含box_2d信息
         if "box_2d" in detection:
+            # 对边界框坐标进行外扩，增大sam分割识别视野
+            detection["box_2d"][0] =int(detection["box_2d"][0]*0.8)
+            detection["box_2d"][1] =int(detection["box_2d"][1]*0.8)
+            detection["box_2d"][2] =int(detection["box_2d"][2]*1.2)
+            detection["box_2d"][3] =int(detection["box_2d"][3]*1.2)
             # 获取边界框坐标 [y1, x1, y2, x2]
             y1, x1, y2, x2 = detection["box_2d"]
             
@@ -314,55 +319,4 @@ def get3DTargetModel(rgb_image, detect_result, depth_data):
 
 
 def getPlan(llm, target3d, plan_prompt):
-    """
-    使用LLM根据目标3D模型进行路径规划
-    
-    Args:
-        llm: LLM模型实例
-        target3d: 3D目标模型数据
-        plan_prompt: 规划提示词
-    
-    Returns:
-        list: 路径航点列表
-    """
-    # 提取目标信息
-    target_info = target3d.get('main_target', {})
-    target_label = target_info.get('label', 'unknown')
-    target_position = target_info.get('position', [0, 0, 0])
-    
-    # 格式化提示词，包含目标的3D坐标信息
-    formatted_prompt = plan_prompt
-    
-    # 使用LLM生成路径规划
-    # 注意：这里需要根据实际的LLM接口进行调整
-    # 由于没有看到LLM类的详细实现，这里提供一个简化版本
-    try:
-        # 假设LLM类有generate_content或类似的方法
-        if hasattr(llm, 'generate_content'):
-            response = llm.generate_content(formatted_prompt)
-        else:
-            # 或者调用其他可用的方法
-            response = llm.create_prompt(target_label, prompt_type="waypoint1")
-        
-        # 解析响应，提取航点
-        # 这里需要根据实际的响应格式进行解析
-        # 提供一个简化的解析逻辑
-        waypoints = []
-        
-        # 如果响应是JSON格式，可以使用json.loads解析
-        import json
-        try:
-            if isinstance(response, str):
-                parsed = json.loads(response)
-                # 假设解析后的数据包含航点信息
-                if isinstance(parsed, list):
-                    waypoints = parsed
-        except Exception:
-            # 如果解析失败，生成默认航点
-            waypoints = [[0, 0, 0], list(target_position)]
-        
-        return waypoints
-    except Exception as e:
-        print(f"路径规划失败: {e}")
-        # 返回默认航点
-        return [[0, 0, 0], list(target_position)]
+    pass
