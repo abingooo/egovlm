@@ -34,10 +34,6 @@ class ImageUtils:
         
         # 保存图像
         success = cv2.imwrite(save_path, image)
-        if success:
-            print(f"图像已保存到: {save_path}")
-        else:
-            print(f"图像保存失败: {save_path}")
         
         return success
     
@@ -89,7 +85,7 @@ class ImageUtils:
         return image_with_boxes
     
     @staticmethod
-    def save_detection_results(rgb_image, detections, save_dir='./debug', 
+    def save_detection_results(rgb_image, detections, save_dir='./log', 
                              image_filename='rgb_image_preview.jpg', 
                              result_filename='detection_result_with_boxes.jpg'):
         """保存原始图像和带有检测结果的图像
@@ -165,9 +161,9 @@ class ImageUtils:
         return converted_result
         
     @staticmethod
-    def visualize_lsam_result(roi_image, lsam_result, index=0, label="object", save_dir="./debug/rois"):
+    def visualize_lsam_result(roi_image, lsam_result, index=0, label="object", save_dir="./log/rois"):
         """
-        可视化LSAM分割结果并保存到rois目录
+        可视化LSAM分割结果并保存到roi目录
         
         Args:
             roi_image (numpy.ndarray): ROI区域图像（RGB格式）
@@ -232,7 +228,7 @@ class ImageUtils:
             success = ImageUtils.save_image(visualized, save_path)
             
             if success:
-                print(f"LSAM分割结果已可视化并保存到: {save_path}")
+                print(f"LSAM分割结果可视化: {save_path}")
                 return save_path
             else:
                 return None
@@ -242,13 +238,13 @@ class ImageUtils:
                     return None
     
     @staticmethod
-    def visualize_target3d_results(rgb_image, target3d, save_dir='debug', filename='target3d_visualization.jpg'):
+    def visualize_target2d_results(rgb_image, target2d, save_dir='log', filename='target2d_visual_in_rgbimage.jpg'):
         """
-        可视化显示target3d结果到RGB图像上
+        可视化显示target2d结果到RGB图像上
         
         Args:
             rgb_image (numpy.ndarray): RGB图像
-            target3d (list): 3D目标列表，每个元素为包含id、label、center、bbox、npoints等信息的字典
+            target2d (dict): 2D目标结果，包含mask_count、masks等信息
             save_dir (str): 保存目录
             filename (str): 保存的文件名
             
@@ -261,40 +257,49 @@ class ImageUtils:
         # 确保保存目录存在
         ImageUtils.ensure_directory_exists(save_dir)
         
-        # 遍历target3d中的每个目标
-        for obj in target3d:
-            # print(f"处理目标: {obj.get('label', 'Unknown')}, ID: {obj.get('id', 'N/A')}")
-            
-            # 绘制边界框
-            if 'bbox' in obj and len(obj['bbox']) >= 2:
-                # 边界框坐标
-                pt1 = tuple(map(int, obj['bbox'][0]))
-                pt2 = tuple(map(int, obj['bbox'][1]))
-                print(f"绘制边界框: {pt1} 到 {pt2}")
+        # 设置颜色（BGR格式）
+        centroid_color = (0, 0, 255)  # 红色 - 质心
+        box_color = (0, 255, 0)       # 绿色 - 检测框
+        random_color = (255, 165, 0)  # 橙色 - 随机点
+        
+        # 检查是否有掩码结果
+        if "mask_count" in target2d and target2d["mask_count"] > 0:
+            # 遍历每个掩码并绘制
+            for mask_data in target2d.get("masks", []):
                 # 绘制边界框
-                cv2.rectangle(visualization_image, pt1, pt2, (0, 255, 0), 2)
+                if "bounding_box" in mask_data:
+                    bbox = mask_data["bounding_box"]
+                    # 确保边界框坐标完整
+                    if all(k in bbox for k in ["x1", "y1", "x2", "y2"]):
+                        cv2.rectangle(visualization_image, 
+                                    (int(bbox["x1"]), int(bbox["y1"])), 
+                                    (int(bbox["x2"]), int(bbox["y2"])), 
+                                    box_color, 2)
                 
-                # 显示标签和ID
-                label_text = f"ID:{obj.get('id', 'N/A')} {obj.get('label', 'Unknown')}"
-                cv2.putText(visualization_image, label_text, (pt1[0], pt1[1]-10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
-            # 绘制质心点
-            if 'center' in obj and len(obj['center']) == 2:
-                center = tuple(map(int, obj['center']))
-                print(f"绘制质心: {center}")
-                cv2.circle(visualization_image, center, 5, (255, 0, 0), -1)
-                # 显示质心坐标
-                cv2.putText(visualization_image, f"{center}", (center[0]+10, center[1]), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-            
-            # 绘制随机点
-            if 'npoints' in obj:
-                print(f"绘制随机点数量: {len(obj['npoints'])}")
-                for point in obj['npoints']:
-                    if len(point) == 2:
-                        point_coord = tuple(map(int, point))
-                        cv2.circle(visualization_image, point_coord, 2, (0, 0, 255), -1)
+                # 绘制质心
+                if "centroid" in mask_data:
+                    centroid = mask_data["centroid"]
+                    cv2.circle(visualization_image, 
+                              (int(centroid[0]), int(centroid[1])), 
+                              5, centroid_color, -1)
+                    cv2.putText(visualization_image, 'Centroid', 
+                              (int(centroid[0]) + 10, int(centroid[1]) - 10),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, centroid_color, 1)
+                
+                # 绘制随机点
+                if "random_points" in mask_data:
+                    for idx, point in enumerate(mask_data["random_points"]):
+                        cv2.circle(visualization_image, 
+                                  (int(point[0]), int(point[1])), 
+                                  4, random_color, -1)
+                        cv2.putText(visualization_image, f'P{idx+1}', 
+                                  (int(point[0]) + 8, int(point[1]) + 8), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.4, random_color, 1)
+        else:
+            # 如果没有检测结果，添加文本提示
+            cv2.putText(visualization_image, "未检测到对象", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            print("未检测到对象，返回原图")
         
         # 构建保存路径
         visualization_path = os.path.join(save_dir, filename)
@@ -303,6 +308,6 @@ class ImageUtils:
         success = ImageUtils.save_image(visualization_image, visualization_path)
         
         if success:
-            print(f"Target3D可视化结果已保存到: {visualization_path}")
+            print(f"Target2D可视化: {visualization_path}")
         
         return visualization_path

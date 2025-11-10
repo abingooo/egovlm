@@ -41,8 +41,9 @@ def getLSamResult(image_input, text_prompt, server_ip="172.16.1.61", server_port
                         # 已经是uint8格式，直接处理
                         image_bgr = image_input.copy()
                         if not np.array_equal(image_bgr[:,:,0], image_bgr[:,:,1]) or not np.array_equal(image_bgr[:,:,1], image_bgr[:,:,2]):
-                            # 看起来不是灰度图，假设是RGB，转换为BGR
-                            image_bgr = cv2.cvtColor(image_input, cv2.COLOR_RGB2BGR)
+                            # 不是灰度图, 直接赋值过去
+                            pass
+                            
                 else:
                     # 如果图像格式不正确，进行转换
                     image_bgr = np.array(image_input, dtype=np.uint8)
@@ -71,7 +72,7 @@ def getLSamResult(image_input, text_prompt, server_ip="172.16.1.61", server_port
         }
         
         # 发送请求
-        print(f"正在向服务器发送请求: {url}")
+        print(f"正在向LSAM服务器发送请求: {url}")
         response = requests.post(url, json=data)
         
         # 检查响应状态
@@ -86,7 +87,9 @@ def getLSamResult(image_input, text_prompt, server_ip="172.16.1.61", server_port
                 
     except Exception as e:
         print(f"请求过程中发生错误: {str(e)}")
-        return {"error": str(e)}
+        print(f"错误详情: {str(e)}")
+        print("VLM检测错误，LSAM无法分割")
+        exit(0)
 
 def visualize_result_local(image_path, result_json, save_path=None):
     """

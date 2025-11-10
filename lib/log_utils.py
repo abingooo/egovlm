@@ -9,6 +9,7 @@ logread库 - 用于读取和处理日志目录中的图像和深度数据
 import numpy as np
 import cv2
 import os
+from PIL import Image
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Union
 
@@ -209,6 +210,7 @@ class LogReader:
         try:
             if os.path.exists(color_path):
                 data['color_image'] = self.read_image(color_path)
+
         except Exception as e:
             print(f"读取彩色图像失败: {str(e)}")
         
