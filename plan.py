@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 from lib.img_utils import ImageUtils
 from lib.vls import *
+from lib.cloud_utils import PointCloudUtils
 
 if __name__ == '__main__':
     # VLM和LLM初始化
@@ -39,12 +40,19 @@ if __name__ == '__main__':
 
     # 第二阶段：lsam服务器进行目标分割，进行目标3D建模
     target3dmodel = get3DTargetModel(rgb_image, detect_result, depth_data)
-    
-    #print(target3dmodel)
-
+    pcu = PointCloudUtils()
+    cube_points = [target3dmodel[0]['center']]+target3dmodel[0]['bbox3dfront']+target3dmodel[0]['bbox3dback']
+    pcu.process_point_cloud( depth_data=depth_data, 
+                            rgb_image=rgb_image,
+                            annotation_data=cube_points, 
+                            modeling_type="cube", 
+                            output_ply_path="./log/point_cloud_mask.ply", 
+                            show_visualization=True, 
+                            radius=0.1
+                            )
     exit(0)
     # 第三阶段：llm根据目标3d模型进行规划
-    waypoints = getPlan(llm, target3d, plan_prompt)
+    waypoints = getPlan(llm, target3dmodel, plan_prompt)
     
     # 输出规划结果
     print("\n规划的航点:")

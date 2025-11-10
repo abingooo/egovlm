@@ -1,6 +1,14 @@
 import numpy as np
 import math
+import cv2
 import os
+# 添加Open3D导入（如果环境中没有安装Open3D，可以注释掉这部分）
+try:
+    import open3d as o3d
+    HAS_OPEN3D = True
+except ImportError:
+    print("警告: 未安装Open3D库，无法使用可视化功能")
+    HAS_OPEN3D = False
 
 class PointCloudUtils:
     """
@@ -12,6 +20,9 @@ class PointCloudUtils:
     BLUE = [0, 0, 255]     # 蓝色：用于所有箭头
     GREEN = [0, 255, 0]    # 绿色：用于最后一个点
     PURPLE = [128, 0, 128] # 紫色：用于只有一个点的情况
+    # 新增颜色定义
+    PINK = [255, 0, 255]   # 品红色：用于立方体角点
+    LIGHT_BLUE = [173, 216, 230]  # 淡蓝色：用于质心点
     
     def __init__(self):
         """初始化点云工具类"""
@@ -248,7 +259,7 @@ class PointCloudUtils:
             
             # 计算dep_data的有效值个数（大于0的值）
             valid_count = (dep_data > 0.0).sum()
-            print(f"有效值个数: {valid_count},有效率：{valid_count / dep_data.size :.2f}")
+            # print(f"有效值个数: {valid_count},有效率：{valid_count / dep_data.size :.2f}")
             
             # 获取有效深度值的索引
             valid_indices = np.where(dep_data > 0.0)
@@ -276,11 +287,11 @@ class PointCloudUtils:
             points_3d = np.array(points_3d)
             colors = np.array(colors)
             
-            print(f"生成的3D点云数量: {points_3d.shape[0]}")
-            if points_3d.shape[0] > 0:
-                print(f"3D点云范围 - X: [{points_3d[:, 0].min():.2f}, {points_3d[:, 0].max():.2f}] m")
-                print(f"3D点云范围 - Y: [{points_3d[:, 1].min():.2f}, {points_3d[:, 1].max():.2f}] m")
-                print(f"3D点云范围 - Z: [{points_3d[:, 2].min():.2f}, {points_3d[:, 2].max():.2f}] m")
+            # print(f"生成的3D点云数量: {points_3d.shape[0]}")
+            # if points_3d.shape[0] > 0:
+            #     print(f"3D点云范围 - X: [{points_3d[:, 0].min():.2f}, {points_3d[:, 0].max():.2f}] m")
+            #     print(f"3D点云范围 - Y: [{points_3d[:, 1].min():.2f}, {points_3d[:, 1].max():.2f}] m")
+            #     print(f"3D点云范围 - Z: [{points_3d[:, 2].min():.2f}, {points_3d[:, 2].max():.2f}] m")
             
             return points_3d, colors
         except Exception as e:
@@ -561,7 +572,426 @@ class PointCloudUtils:
             new_path = os.path.join(directory, new_filename)
         
         return new_path
+    
+    def add_cube_annotation(self, input_ply_path, output_ply_path, cube_points, radius=0.2, points_per_edge=500):
+        """
+        添加立方体标注到PLY点云文件（绘制12条边和质心）
+        
+        参数:
+            input_ply_path: 输入PLY文件路径
+            output_ply_path: 输出PLY文件路径
+            cube_points: 立方体点列表，格式为 [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...]
+                        第一个点是质心，后八个点是立方体的八个角点，顺序为：左上前、右下前、右上前、左下前、左上后、右下后、右上后、左下后
+            radius: 绘制尺寸，默认0.2
+            points_per_edge: 每条边生成的点数，默认500
+        
+        返回:
+            bool: 是否成功添加立方体标注
+        """
+        output_ply_path = self.get_next_filename(output_ply_path)
+        try:
+            # 读取原始点云
+            original_points, original_colors = self.read_ply_file(input_ply_path)
+            if len(original_points) == 0:
+                return False
+            
+            # 将标注点扩展为球体/边，使其在点云中更明显
+            all_points = original_points.tolist()
+            all_colors = original_colors.tolist()
+            
+            # 检查输入的点数量是否正确
+            if len(cube_points) < 9:
+                print("错误: 输入的cube_points列表应包含9个点（1个质心和8个角点）")
+                return False
+            
+            # 提取质心和8个角点
+            centroid = cube_points[0]
+            corner_points = cube_points[1:9]
+            
+            # 1. 添加质心点（修改为红色球体）
+            centroid_points, centroid_colors = self._generate_sphere_points(
+                centroid, radius, points_per_edge, self.RED
+            )
+            all_points.extend(centroid_points)
+            all_colors.extend(centroid_colors)
+            
+            # 2. 绘制立方体的12条边（品红色）
+            # 根据用户提供的角点顺序定义立方体12条边的连接关系（索引对）
+            # 顺序为：左上前(0)、右下前(1)、右上前(2)、左下前(3)、左上后(4)、右下后(5)、右上后(6)、左下后(7)
+            edge_indices = [
+                (0, 2), (2, 1), (1, 3), (3, 0),  # 前方面四条边
+                (4, 6), (6, 5), (5, 7), (7, 4),  # 后方面四条边
+                (0, 4), (2, 6), (1, 5), (3, 7)   # 连接前后的四条边
+            ]
+            
+            # 生成每条边的点
+            for start_idx, end_idx in edge_indices:
+                if start_idx < len(corner_points) and end_idx < len(corner_points):
+                    start_point = corner_points[start_idx]
+                    end_point = corner_points[end_idx]
+                    edge_points, edge_colors = self._generate_edge_points(
+                        start_point, end_point, radius, points_per_edge, self.PINK
+                    )
+                    all_points.extend(edge_points)
+                    all_colors.extend(edge_colors)
+            
+            # 构建新的PLY文件
+            total_points = len(all_points)
+            
+            # 创建PLY文件头部
+            header = [
+                'ply',
+                'format ascii 1.0',
+                f'element vertex {total_points}',
+                'property float x',
+                'property float y',
+                'property float z',
+                'property uchar red',
+                'property uchar green',
+                'property uchar blue',
+                'end_header'
+            ]
+            
+            # 写入新的PLY文件
+            with open(output_ply_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(header) + '\n')
+                
+                for i in range(total_points):
+                    x, y, z = all_points[i]
+                    r = max(0, min(255, int(all_colors[i][0])))
+                    g = max(0, min(255, int(all_colors[i][1])))
+                    b = max(0, min(255, int(all_colors[i][2])))
+                    f.write(f'{x:.6f} {y:.6f} {z:.6f} {r} {g} {b}\n')
+            
+            print(f"成功添加立方体标注到 {output_ply_path}")
+            print(f"绘制了1个质心点（红色）和12条立方体边（品红色）")
+            return True
+            
+        except Exception as e:
+            print(f"添加立方体标注时出错: {e}")
+            return False
+    
+    def _generate_edge_points(self, start_point, end_point, radius, num_points, color):
+        """
+        生成从start_point到end_point的实心边
+        边由实心圆柱体组成
+        
+        参数:
+            start_point: 边的起点坐标
+            end_point: 边的终点坐标
+            radius: 基础半径参数
+            num_points: 生成的点数
+            color: 边的颜色
+            
+        返回:
+            tuple: (points, colors) 生成的边点和颜色列表
+        """
+        points = []
+        colors = []
+        
+        # 计算方向向量
+        direction = np.array(end_point) - np.array(start_point)
+        length = np.linalg.norm(direction)
+        if length == 0:
+            # 如果起点和终点重合，返回球体
+            return self._generate_sphere_points(start_point, radius, num_points, color)
+        
+        direction_normalized = direction / length
+        
+        # 计算正交基（用于生成圆柱体表面）
+        if abs(direction_normalized[2]) < 0.9:  # 如果方向不是接近z轴
+            up = np.array([0, 0, 1])
+        else:
+            up = np.array([1, 0, 0])
+        
+        right = np.cross(direction_normalized, up)
+        right = right / np.linalg.norm(right)
+        up = np.cross(right, direction_normalized)
+        up = up / np.linalg.norm(up)
+        
+        # 设置固定的边粗细
+        edge_radius = radius * 0.3  # 边的半径
+        
+        # 生成实心边（圆柱体）
+        num_circles = 15  # 层数
+        points_per_radius = 3  # 径向填充层数
+        
+        for i in range(num_circles + 1):
+            t = i / num_circles
+            # 从起点到终点生成圆柱体
+            circle_center = np.array(start_point) + direction_normalized * length * t
+            
+            # 径向填充：从中心到外边缘生成多个同心圆
+            for r_factor in range(points_per_radius):
+                current_radius = edge_radius * (r_factor + 1) / points_per_radius
+                # 外层圆的点数更多，内层圆的点数较少
+                current_points_per_circle = max(4, int(6 * (r_factor + 1)))
+                
+                for j in range(current_points_per_circle):
+                    angle = 2 * np.pi * j / current_points_per_circle
+                    x = circle_center[0] + current_radius * (math.cos(angle) * right[0] + math.sin(angle) * up[0])
+                    y = circle_center[1] + current_radius * (math.cos(angle) * right[1] + math.sin(angle) * up[1])
+                    z = circle_center[2] + current_radius * (math.cos(angle) * right[2] + math.sin(angle) * up[2])
+                    points.append([x, y, z])
+                    colors.append(color)
+        
+        return points, colors
+    
+    def convert_labeled_points(self, labeled_points):
+        """
+        将包含标签的点列表转换为仅包含点坐标的列表，并进行坐标变换
+        
+        输入格式：[{"point": [x, y, z], "label": "0"}, ...]
+        输出格式：[[X, Z, Y], ...]，其中X和Z取反
+        
+        参数:
+            labeled_points: 包含标签的点列表
+        
+        返回:
+            list: 转换后的点坐标列表
+        """
+        try:
+            result = []
+            for item in labeled_points:
+                if "point" in item and len(item["point"]) >= 3:
+                    # 提取点坐标 [x, y, z]
+                    x, y, z = item["point"]
+                    # 应用变换：[X, Y, Z] -> [-X, -Z, Y]
+                    transformed_point = [-x, -z, y]
+                    result.append(transformed_point)
+                else:
+                    print(f"警告: 无效的点数据格式: {item}")
+            
+            print(f"成功转换 {len(result)} 个带标签的点")
+            return result
+        except Exception as e:
+            print(f"转换带标签的点时出错: {e}")
+            return []
+    
+    def get_next_filename(self, base_path):
+        """
+        生成递增序号的文件名
+        
+        参数:
+            base_path: 基础文件路径，如 "path/to/file.ply"
+        
+        返回:
+            str: 递增序号的文件路径，如 "path/to/file_1.ply"
+        """
+        # 分离文件路径、文件名和扩展名
+        directory, filename = os.path.split(base_path)
+        name_without_ext, ext = os.path.splitext(filename)
+        
+        # 检查是否已经有带序号的文件
+        counter = 1
+        new_filename = f"{name_without_ext}_{counter}{ext}"
+        new_path = os.path.join(directory, new_filename)
+        
+        # 找到下一个可用的序号
+        while os.path.exists(new_path):
+            counter += 1
+            new_filename = f"{name_without_ext}_{counter}{ext}"
+            new_path = os.path.join(directory, new_filename)
+        
+        return new_path
 
+    def process_point_cloud(self, depth_data, rgb_image, annotation_data, modeling_type, 
+                                          output_ply_path, show_visualization=False, 
+                                          fx=383.19929174573906, fy=384.76715878730715, 
+                                          cx=317.944484051631, cy=231.71115593384292, 
+                                          radius=0.05):
+        """
+        一站式处理点云：从深度数据生成点云，添加标注，并保存到单个PLY文件，无中间文件产生
+        
+        参数:
+            depth_data: 深度图像数据
+            rgb_image: RGB彩色图像数据
+            annotation_data: 用于添加标注的数据，根据modeling_type不同格式不同
+                            - 对于"cube"类型: [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...]
+                            - 对于"path"类型: [[x1, y1, z1], [x2, y2, z2], ...]
+            modeling_type: 建模类型，可选值: "cube"(立方体)或"path"(路线)
+            output_ply_path: 输出PLY文件路径
+            show_visualization: 是否使用Open3D显示点云，默认为False
+            fx, fy: 相机的焦距，默认为预定义值
+            cx, cy: 相机的主点坐标，默认为预定义值
+            radius: 标注元素的大小，默认为0.05
+        """
+        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        try:
+            # 1. 从深度数据和RGB图像生成点云
+            points_3d, colors = self.depth_to_point_cloud(depth_data, rgb_image, fx, fy, cx, cy)
+            if len(points_3d) == 0:
+                print("错误: 生成的点云为空")
+                return
+            
+            # 将原始点云转换为列表格式，便于处理
+            all_points = points_3d.tolist()
+            all_colors = colors.tolist()
+            
+            # 2. 根据建模类型添加标注
+            if modeling_type.lower() == "cube":
+                # 立方体建模类型
+                if len(annotation_data) < 9:
+                    print("错误: 立方体建模需要至少9个点（1个质心和8个角点）")
+                    return
+                
+                # 提取质心和8个角点
+                centroid = annotation_data[0]
+                corner_points = annotation_data[1:9]
+                
+                # 添加质心点（红色球体）
+                centroid_points, centroid_colors = self._generate_sphere_points(
+                    centroid, radius, 1000, self.RED
+                )
+                all_points.extend(centroid_points)
+                all_colors.extend(centroid_colors)
+                
+                # 绘制立方体的12条边（品红色）
+                # 顺序为：左上前(0)、右下前(1)、右上前(2)、左下前(3)、左上后(4)、右下后(5)、右上后(6)、左下后(7)
+                edge_indices = [
+                    (0, 2), (2, 1), (1, 3), (3, 0),  # 前方面四条边
+                    (4, 6), (6, 5), (5, 7), (7, 4),  # 后方面四条边
+                    (0, 4), (2, 6), (1, 5), (3, 7)   # 连接前后的四条边
+                ]
+                
+                # 生成每条边的点
+                for start_idx, end_idx in edge_indices:
+                    if start_idx < len(corner_points) and end_idx < len(corner_points):
+                        start_point = corner_points[start_idx]
+                        end_point = corner_points[end_idx]
+                        edge_points, edge_colors = self._generate_edge_points(
+                            start_point, end_point, radius, 1000, self.PINK
+                        )
+                        all_points.extend(edge_points)
+                        all_colors.extend(edge_colors)
+            elif modeling_type.lower() == "path":
+                # 路线建模类型
+                if len(annotation_data) < 1:
+                    print("错误: 路线建模需要至少1个点")
+                    return
+                
+                # 添加路线标注点，与add_annotation_points功能相同
+                for i, point in enumerate(annotation_data):
+                    if len(annotation_data) == 1:
+                        # 只有一个点的情况：显示紫色球体
+                        sphere_points, sphere_colors = self._generate_sphere_points(
+                            point, radius, 1000, self.PURPLE
+                        )
+                        all_points.extend(sphere_points)
+                        all_colors.extend(sphere_colors)
+                    elif i == 0:
+                        # 起始点：红色球体 + 蓝色箭头
+                        # 添加红色球体
+                        sphere_points, sphere_colors = self._generate_sphere_points(
+                            point, radius, 1000, self.RED
+                        )
+                        all_points.extend(sphere_points)
+                        all_colors.extend(sphere_colors)
+                        
+                        # 添加指向第二个点的蓝色箭头
+                        next_point = annotation_data[i + 1]
+                        arrow_points, arrow_colors = self._generate_arrow_points(
+                            point, next_point, radius, 1000, self.BLUE
+                        )
+                        all_points.extend(arrow_points)
+                        all_colors.extend(arrow_colors)
+                    elif i < len(annotation_data) - 1:
+                        # 中间点：蓝色箭头（不显示球体）
+                        next_point = annotation_data[i + 1]
+                        arrow_points, arrow_colors = self._generate_arrow_points(
+                            point, next_point, radius, 1000, self.BLUE
+                        )
+                        all_points.extend(arrow_points)
+                        all_colors.extend(arrow_colors)
+                    else:
+                        # 最后一个点：绿色球体
+                        sphere_points, sphere_colors = self._generate_sphere_points(
+                            point, radius, 1000, self.GREEN
+                        )
+                        all_points.extend(sphere_points)
+                        all_colors.extend(sphere_colors)
+            else:
+                print(f"错误: 不支持的建模类型 '{modeling_type}'，可选值为 'cube' 或 'path'")
+                return
+            
+            # 3. 创建唯一的输出文件名
+            # output_ply_path = self.get_next_filename(output_ply_path)
+            
+            # 4. 直接保存完整的点云（原始点云+标注）到单个PLY文件
+            self._save_combined_point_cloud(all_points, all_colors, output_ply_path)
+            
+            # 5. 可选地使用Open3D显示点云
+            if show_visualization and HAS_OPEN3D:
+                self._visualize_with_open3d(all_points, all_colors)
+                
+        except Exception as e:
+            print(f"处理点云时出错: {e}")
+    
+    def _save_combined_point_cloud(self, all_points, all_colors, ply_file_path):
+        """
+        保存合并后的点云数据到PLY文件
+        """
+        try:
+            # 确保points不为空
+            if len(all_points) == 0:
+                print("错误: 没有点云数据可保存")
+                return
+            
+            # 创建PLY文件头部
+            header = [
+                'ply',
+                'format ascii 1.0',
+                f'element vertex {len(all_points)}',
+                'property float x',
+                'property float y',
+                'property float z',
+                'property uchar red',
+                'property uchar green',
+                'property uchar blue',
+                'end_header'
+            ]
+            
+            # 写入PLY文件
+            with open(ply_file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(header) + '\n')
+                
+                for i in range(len(all_points)):
+                    x, y, z = all_points[i]
+                    # 确保颜色值在0-255范围内
+                    if i < len(all_colors):
+                        r = max(0, min(255, int(all_colors[i][0])))
+                        g = max(0, min(255, int(all_colors[i][1])))
+                        b = max(0, min(255, int(all_colors[i][2])))
+                    else:
+                        r, g, b = 0, 0, 0
+                    f.write(f'{x:.6f} {y:.6f} {z:.6f} {r} {g} {b}\n')
+            
+            print(f'点云构建成功: {ply_file_path}')
+            # print(f'保存的点云包含 {len(all_points)} 个点')
+        except Exception as e:
+            print(f"保存点云到PLY文件时出错: {e}")
+    
+    def _visualize_with_open3d(self, points, colors):
+        """
+        使用Open3D可视化点云
+        """
+        try:
+            # 创建Open3D点云对象
+            pcd = o3d.geometry.PointCloud()
+            
+            # 设置点坐标
+            pcd.points = o3d.utility.Vector3dVector(np.array(points))
+            
+            # 设置点颜色（Open3D需要[0,1]范围的浮点数）
+            color_array = np.array(colors)
+            color_array = np.clip(color_array / 255.0, 0, 1)
+            pcd.colors = o3d.utility.Vector3dVector(color_array)
+            
+            # 可视化点云
+            o3d.visualization.draw_geometries([pcd], window_name="点云可视化")
+            
+        except Exception as e:
+            print(f"使用Open3D可视化点云时出错: {e}")
 
 if __name__ == "__main__":
     point_cloud_utils = PointCloudUtils()
@@ -587,3 +1017,5 @@ if __name__ == "__main__":
     ]
     converted_points = point_cloud_utils.convert_labeled_points(labeled_points)
     print("转换后的点列表:", converted_points)
+
+
