@@ -206,6 +206,7 @@ class Target3DModeler:
         # 使用通用函数计算质心3D坐标（XYZ正向：右下前）
         obj3d['center'] = self.calculate_3d_position(obj_data['center'], obj3d['depth'])
         
+        #  ============立方体建模计算=============================
         # 计算四个角点3D坐标（XYZ正向：右下前）
         obj3d['bbox3dfront'] = [
             self.calculate_3d_position(obj_data['bbox'][0], obj3d['depth']),  # 左上前角点
@@ -213,7 +214,7 @@ class Target3DModeler:
             self.calculate_3d_position([obj_data['bbox'][1][0], obj_data['bbox'][0][1]], obj3d['depth']),  # 右上前角点
             self.calculate_3d_position([obj_data['bbox'][0][0], obj_data['bbox'][1][1]], obj3d['depth'])  # 左下前角点
         ]
-        
+
         # 对质心的Z进行修正
         # 简化计算：只计算矩形边界框的两条对角线
         # 对角线1：左上到右下
@@ -241,6 +242,16 @@ class Target3DModeler:
             [obj3d['bbox3dfront'][2][0], obj3d['bbox3dfront'][2][1], round(obj3d['bbox3dfront'][2][2] + back_z_offset, 2)],  # 右上后角点
             [obj3d['bbox3dfront'][3][0], obj3d['bbox3dfront'][3][1], round(obj3d['bbox3dfront'][3][2] + back_z_offset, 2)]  # 左下后角点
         ]
+        #  ============球体建模计算=============================
+        # 估算物体中心
+        center_x = sum(pt[0] for pt in obj3d['bbox3dfront']) / 4
+        center_y = sum(pt[1] for pt in obj3d['bbox3dfront']) / 4
+        center_z = sum(pt[2] for pt in obj3d['bbox3dfront']) / 4
+        front3d_center = [round(center_x, 2), round(center_y, 2), round(center_z, 2)]
+        obj3d['circle_center'] = front3d_center
+        obj3d['circle_center'][2] = round(obj3d['circle_center'][2] + xiuzhen * 0.35, 2)
+        # 计算最大半径
+        obj3d['radius'] = round(xiuzhen * 0.55, 2)
         
         # 确保所有数值都转换为Python原生类型并保留2位小数
         # 处理bbox3dfront中的所有坐标
@@ -289,6 +300,8 @@ class Target3DProcessor:
             rgb_coordinates_lsam_result = self.lsam_processor.process_lsam_result(
                 target_region, index
             )
+            import json
+            print(json.dumps(rgb_coordinates_lsam_result, indent=2, ensure_ascii=False))
             # 可视化lsam结果
             ImageUtils.visualize_target2d_results(rgb_image, rgb_coordinates_lsam_result)
             
@@ -301,19 +314,3 @@ class Target3DProcessor:
         
         
         return object_dict_for3d_list
-
-# 保持原函数接口，以便兼容现有代码
-def get3DTargetModel(rgb_image, detect_result, depth_data):
-    """
-    从RGB图像中剪切检测结果对应的区域，并构建指定格式的字典
-    
-    Args:
-        rgb_image: RGB格式的图像数据
-        detect_result: 检测结果列表，包含边界框信息
-        depth_data: 深度图像数据（这里暂不使用）
-    
-    Returns:
-        list: 包含剪切区域信息的字典列表
-    """
-    processor = Target3DProcessor()
-    return processor.process_targets(rgb_image, detect_result, depth_data)

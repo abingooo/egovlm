@@ -64,7 +64,7 @@ def getCameraData():
     else:
         reader = create_reader('./oldlog')
         # 读取最新的日志数据
-        latest_data = reader.read_log_data('20251103_105035')
+        latest_data = reader.read_log_data('20251103_104756')
         # 获取RGB图像
         rgb_image = latest_data['color_image']
         # 获取深度数据

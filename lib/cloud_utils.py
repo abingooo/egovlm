@@ -809,7 +809,8 @@ class PointCloudUtils:
             annotation_data: 用于添加标注的数据，根据modeling_type不同格式不同
                             - 对于"cube"类型: [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...]
                             - 对于"path"类型: [[x1, y1, z1], [x2, y2, z2], ...]
-            modeling_type: 建模类型，可选值: "cube"(立方体)或"path"(路线)
+                            - 对于"sphere"类型: [[x1, y1, z1, r1], [x2, y2, z2, r2], ...]，其中r是球体半径
+            modeling_type: 建模类型，可选值: "cube"(立方体)、"path"(路线)或"sphere"(球体)
             output_ply_path: 输出PLY文件路径
             show_visualization: 是否使用Open3D显示点云，默认为False
             fx, fy: 相机的焦距，默认为预定义值
@@ -910,8 +911,29 @@ class PointCloudUtils:
                         )
                         all_points.extend(sphere_points)
                         all_colors.extend(sphere_colors)
+            elif modeling_type.lower() == "sphere":
+                # 球体建模类型
+                if len(annotation_data) < 1:
+                    print("错误: 球体建模需要至少1个球体数据")
+                    return
+                
+                # 每个球体数据格式：[x, y, z, r]，其中r是球体半径
+                for sphere_data in annotation_data:
+                    if len(sphere_data) < 4:
+                        print("错误: 球体数据格式应为[x, y, z, r]")
+                        continue
+                    
+                    x, y, z, sphere_radius = sphere_data[:4]
+                    center = [x, y, z]
+                    
+                    # 使用LIGHT_BLUE颜色表示球体，使用球体数据中指定的半径
+                    sphere_points, sphere_colors = self._generate_sphere_points(
+                        center, sphere_radius, 1000, self.BLUE
+                    )
+                    all_points.extend(sphere_points)
+                    all_colors.extend(sphere_colors)
             else:
-                print(f"错误: 不支持的建模类型 '{modeling_type}'，可选值为 'cube' 或 'path'")
+                print(f"错误: 不支持的建模类型 '{modeling_type}'，可选值为 'cube'、'path' 或 'sphere'")
                 return
             
             # 3. 创建唯一的输出文件名
