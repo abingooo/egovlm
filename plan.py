@@ -40,28 +40,28 @@ if __name__ == '__main__':
 
     # 第二阶段：lsam服务器进行目标分割，进行目标3D建模
     target3dmodel = get3DTargetModel(rgb_image, detect_result, depth_data)
-    import json
-    print(json.dumps(target3dmodel, indent=2, ensure_ascii=False))
+    # import json
+    # print(json.dumps(target3dmodel, indent=2, ensure_ascii=False))
+    print(target3dmodel)
     pcu = PointCloudUtils()
     cube_points = [target3dmodel[0]['center']]+target3dmodel[0]['bbox3dfront']+target3dmodel[0]['bbox3dback']
     sphere_points = [target3dmodel[0]['circle_center']+[target3dmodel[0]['radius']]]
-    print(sphere_points)
-    # pcu.process_point_cloud( depth_data=depth_data, 
-    #                         rgb_image=rgb_image,
-    #                         annotation_data=cube_points, 
-    #                         modeling_type="cube", 
-    #                         output_ply_path="./log/point_cloud_cube.ply", 
-    #                         show_visualization=True, 
-    #                         radius=0.1
-    #                         )
     pcu.process_point_cloud( depth_data=depth_data, 
                             rgb_image=rgb_image,
-                            annotation_data=sphere_points, 
-                            modeling_type="sphere", 
-                            output_ply_path="./log/point_cloud_sphere.ply", 
+                            annotation_data=cube_points, 
+                            modeling_type="cube", 
+                            output_ply_path="./log/point_cloud_cube.ply", 
                             show_visualization=True, 
                             radius=0.1
                             )
+    # pcu.process_point_cloud( depth_data=depth_data, 
+    #                         rgb_image=rgb_image,
+    #                         annotation_data=sphere_points, 
+    #                         modeling_type="sphere", 
+    #                         output_ply_path="./log/point_cloud_sphere.ply", 
+    #                         show_visualization=True, 
+    #                         radius=0.1
+    #                         )
     exit(0)
     # 第三阶段：llm根据目标3d模型进行规划
     waypoints = getPlan(llm, target3dmodel, plan_prompt)

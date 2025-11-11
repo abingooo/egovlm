@@ -300,8 +300,8 @@ class Target3DProcessor:
             rgb_coordinates_lsam_result = self.lsam_processor.process_lsam_result(
                 target_region, index
             )
-            import json
-            print(json.dumps(rgb_coordinates_lsam_result, indent=2, ensure_ascii=False))
+            # import json
+            # print(json.dumps(rgb_coordinates_lsam_result, indent=2, ensure_ascii=False))
             # 可视化lsam结果
             ImageUtils.visualize_target2d_results(rgb_image, rgb_coordinates_lsam_result)
             
