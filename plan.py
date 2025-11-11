@@ -62,6 +62,15 @@ if __name__ == '__main__':
     #                         show_visualization=True, 
     #                         radius=0.1
     #                         )
+    pcu.process_point_cloud(
+                            input_ply_path="./log/point_cloud_cube.ply",
+                            annotation_data=path_points, 
+                            modeling_type="path", 
+                            output_ply_path="./log/point_cloud_cube_path.ply", 
+                            show_visualization=True, 
+                            radius=0.1
+                            )
+    
     exit(0)
     # 第三阶段：llm根据目标3d模型进行规划
     waypoints = getPlan(llm, target3dmodel, plan_prompt)

@@ -795,17 +795,17 @@ class PointCloudUtils:
         
         return new_path
 
-    def process_point_cloud(self, depth_data, rgb_image, annotation_data, modeling_type, 
-                                          output_ply_path, show_visualization=False, 
+    def process_point_cloud(self, input_ply_path=None, depth_data=None, rgb_image=None, annotation_data=None, modeling_type=None, 
+                                          output_ply_path=None, show_visualization=False, 
                                           fx=383.19929174573906, fy=384.76715878730715, 
                                           cx=317.944484051631, cy=231.71115593384292, 
-                                          radius=0.05):
+                                          radius=0.05, ):
         """
-        一站式处理点云：从深度数据生成点云，添加标注，并保存到单个PLY文件，无中间文件产生
+        一站式处理点云：从深度数据生成点云或从PLY文件读取点云，添加标注，并保存到单个PLY文件
         
         参数:
-            depth_data: 深度图像数据
-            rgb_image: RGB彩色图像数据
+            depth_data: 深度图像数据（如果使用深度数据生成点云）
+            rgb_image: RGB彩色图像数据（如果使用深度数据生成点云）
             annotation_data: 用于添加标注的数据，根据modeling_type不同格式不同
                             - 对于"cube"类型: [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...]
                             - 对于"path"类型: [[x1, y1, z1], [x2, y2, z2], ...]
@@ -816,13 +816,26 @@ class PointCloudUtils:
             fx, fy: 相机的焦距，默认为预定义值
             cx, cy: 相机的主点坐标，默认为预定义值
             radius: 标注元素的大小，默认为0.05
+            input_ply_path: 输入PLY文件路径，如果提供，则从该文件读取点云数据，而不是从深度数据生成
         """
-        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
         try:
-            # 1. 从深度数据和RGB图像生成点云
-            points_3d, colors = self.depth_to_point_cloud(depth_data, rgb_image, fx, fy, cx, cy)
+            # 1. 获取点云数据：优先从input_ply_path读取，如果未提供则从深度数据生成
+            if input_ply_path is not None:
+                # 从PLY文件读取点云数据
+                points_3d, colors = self.read_ply_file(input_ply_path)
+                print(f"从PLY文件读取点云数据: {input_ply_path}")
+            else:
+                # 检查必要参数
+                if depth_data is None or rgb_image is None:
+                    print("错误: 未提供input_ply_path，且缺少必要的depth_data或rgb_image参数")
+                    return
+                # 从深度数据和RGB图像生成点云
+                rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+                points_3d, colors = self.depth_to_point_cloud(depth_data, rgb_image, fx, fy, cx, cy)
+                print("从深度数据和RGB图像生成点云")
+            
             if len(points_3d) == 0:
-                print("错误: 生成的点云为空")
+                print("错误: 点云数据为空")
                 return
             
             # 将原始点云转换为列表格式，便于处理
