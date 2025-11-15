@@ -55,7 +55,7 @@ class LSamProcessor:
     """
     
     @staticmethod
-    def process_lsam_result(target_region, index, server_ip="172.16.1.61", server_port=5000):
+    def process_lsam_result(target_region, index, server_ip="127.0.0.1", server_port=5002):
         """
         处理LSam服务器的分割结果
         
@@ -139,7 +139,7 @@ class Target3DModeler:
             float: 平均深度值
         """
         avg_depth = 0
-        for point in obj_data['npoints'] + [obj_data['center']]:
+        for point in obj_data['npoints'] + [obj_data['mass_center']]:
             # 对每个像素点应用7x7窗口的中值滤波
             x, y = point
             # 计算窗口边界，确保在图像范围内
@@ -159,7 +159,75 @@ class Target3DModeler:
         avg_depth /= 10
         return round(avg_depth, 2)  # 保留2位小数
     
-    def create_3d_model(self, rgb_coordinates_lsam_result, depth_data, index):
+    def calculate_distance(self, p1, p2):
+        """
+        计算两点之间的欧氏距离
+        
+        Args:
+            p1: 点1坐标 [x1, y1, z1]
+            p2: 点2坐标 [x2, y2, z2]
+            
+        Returns:
+            float: 两点之间的距离
+        """
+        return round(((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 + (p1[2] - p2[2])**2)**0.5, 2)
+
+    def calculate_sphere_centers(self, corners, radius, tol=1e-8):
+        """
+        四个共面角点 + 半径 r -> 返回两个球心解（或 0 个）
+        
+        参数:
+            corners: [[x,y,z], [x,y,z], [x,y,z], [x,y,z]]
+            radius:  float, 球半径 r
+
+        返回:
+            centers: list，长度为 0 或 2，每个元素是 [x,y,z]
+        """
+        P = np.array(corners, dtype=float)
+        
+        # 1) 平面内中心 O（四个点的平均）
+        O = P.mean(axis=0)
+        
+        # 2) 平面内圆半径 R0（中心到任意角点的距离）
+        R0 = np.linalg.norm(P[0] - O)
+
+        # 如果给的 r 比这个圆还小，根本包不住四个点 -> 无解
+        if radius < R0 - tol:
+            return []  # 或者 raise ValueError("半径太小，无法成球")
+
+        # 3) 平面法向量 n（用两条边叉乘）
+        v1 = P[1] - P[0]
+        v2 = P[2] - P[0]
+        n = np.cross(v1, v2)
+        norm_n = np.linalg.norm(n)
+        if norm_n < tol:
+            # 四点几乎共线或严重退化
+            return []  # 或 raise
+
+        n = n / norm_n
+
+        # 4) 沿法线方向的偏移距离 h
+        h_sq = radius**2 - R0**2
+        # 数值误差可能略微 < 0，截断到 0
+        if h_sq < 0:
+            if h_sq > -tol:
+                h_sq = 0.0
+            else:
+                return []  # 几何上无解
+        h = np.sqrt(h_sq)
+
+        # 5) 两个球心
+        C1 = O + h * n
+        C2 = O - h * n
+        # 对每个坐标值进行四舍五入，保留2位小数
+        C1_rounded = [round(float(coord), 2) for coord in C1]
+        C2_rounded = [round(float(coord), 2) for coord in C2]
+        # print(C1_rounded, C2_rounded)
+        if C1_rounded[2] > C2_rounded[2]:
+            return C1_rounded
+        return C2_rounded
+
+    def create_3d_model(self, rgb_coordinates_lsam_result, depth_data, index, safe_distance=0.3):
         """
         创建3D目标模型
         
@@ -167,6 +235,7 @@ class Target3DModeler:
             rgb_coordinates_lsam_result: 转换后的LSam结果
             depth_data: 深度图像数据
             index: 目标索引
+            safe_distance: 安全距离
             
         Returns:
             dict: 3D目标模型字典
@@ -180,7 +249,7 @@ class Target3DModeler:
         obj_data = {
             'id': index,
             'label': rgb_coordinates_lsam_result.get('text_prompt', f'object_{index}'),
-            'center': first_mask.get('centroid', []),
+            'mass_center': first_mask.get('centroid', []),
         }
         
         # 边界框（转换为简单格式）
@@ -201,67 +270,28 @@ class Target3DModeler:
         }
         
         # 计算平均深度
-        obj3d['depth'] = self.calculate_average_depth(obj_data, depth_data)
+        depth = self.calculate_average_depth(obj_data, depth_data)
         
         # 使用通用函数计算质心3D坐标（XYZ正向：右下前）
-        obj3d['center'] = self.calculate_3d_position(obj_data['center'], obj3d['depth'])
+        # mass_center = self.calculate_3d_position(obj_data['mass_center'], depth)
         
-        #  ============立方体建模计算=============================
-        # 计算四个角点3D坐标（XYZ正向：右下前）
-        obj3d['bbox3dfront'] = [
-            self.calculate_3d_position(obj_data['bbox'][0], obj3d['depth']),  # 左上前角点
-            self.calculate_3d_position(obj_data['bbox'][1], obj3d['depth']),  # 右下前角点
-            self.calculate_3d_position([obj_data['bbox'][1][0], obj_data['bbox'][0][1]], obj3d['depth']),  # 右上前角点
-            self.calculate_3d_position([obj_data['bbox'][0][0], obj_data['bbox'][1][1]], obj3d['depth'])  # 左下前角点
-        ]
-
-        # 对质心的Z进行修正
-        # 简化计算：只计算矩形边界框的两条对角线
-        # 对角线1：左上到右下
-        dx1 = obj3d['bbox3dfront'][0][0] - obj3d['bbox3dfront'][1][0]
-        dy1 = obj3d['bbox3dfront'][0][1] - obj3d['bbox3dfront'][1][1]
-        dz1 = obj3d['bbox3dfront'][0][2] - obj3d['bbox3dfront'][1][2]
-        diagonal1 = (dx1**2 + dy1**2 + dz1**2) ** 0.5  # 使用Python内置的平方根
-        
-        # 对角线2：右上到左下
-        dx2 = obj3d['bbox3dfront'][2][0] - obj3d['bbox3dfront'][3][0]
-        dy2 = obj3d['bbox3dfront'][2][1] - obj3d['bbox3dfront'][3][1]
-        dz2 = obj3d['bbox3dfront'][2][2] - obj3d['bbox3dfront'][3][2]
-        diagonal2 = (dx2**2 + dy2**2 + dz2**2) ** 0.5  # 使用Python内置的平方根
-        
-        # 对质心Z坐标进行修正
-        xiuzhen = abs(max([diagonal1, diagonal2]))
-        xiuzhen = round(float(xiuzhen), 2)  # 转换为Python原生float并保留2位小数
-        obj3d['center'][2] = round(obj3d['center'][2] + xiuzhen * 0.2, 2)
-        
-        # 估算后面的四个角点
-        back_z_offset = round(xiuzhen * 0.4, 2)
-        obj3d['bbox3dback'] = [
-            [obj3d['bbox3dfront'][0][0], obj3d['bbox3dfront'][0][1], round(obj3d['bbox3dfront'][0][2] + back_z_offset, 2)],  # 左上后角点
-            [obj3d['bbox3dfront'][1][0], obj3d['bbox3dfront'][1][1], round(obj3d['bbox3dfront'][1][2] + back_z_offset, 2)],  # 右下后角点
-            [obj3d['bbox3dfront'][2][0], obj3d['bbox3dfront'][2][1], round(obj3d['bbox3dfront'][2][2] + back_z_offset, 2)],  # 右上后角点
-            [obj3d['bbox3dfront'][3][0], obj3d['bbox3dfront'][3][1], round(obj3d['bbox3dfront'][3][2] + back_z_offset, 2)]  # 左下后角点
-        ]
         #  ============球体建模计算=============================
-        # 估算物体中心
-        center_x = sum(pt[0] for pt in obj3d['bbox3dfront']) / 4
-        center_y = sum(pt[1] for pt in obj3d['bbox3dfront']) / 4
-        center_z = sum(pt[2] for pt in obj3d['bbox3dfront']) / 4
-        front3d_center = [round(center_x, 2), round(center_y, 2), round(center_z, 2)]
-        obj3d['circle_center'] = front3d_center
-        obj3d['circle_center'][2] = round(obj3d['circle_center'][2] + xiuzhen * 0.35, 2)
-        # 计算最大半径
-        obj3d['radius'] = round(xiuzhen * 0.55, 2)
-        
-        # 确保所有数值都转换为Python原生类型并保留2位小数
-        # 处理bbox3dfront中的所有坐标
-        for i in range(len(obj3d['bbox3dfront'])):
-            obj3d['bbox3dfront'][i] = [
-                round(float(obj3d['bbox3dfront'][i][0]), 2),
-                round(float(obj3d['bbox3dfront'][i][1]), 2),
-                round(float(obj3d['bbox3dfront'][i][2]), 2)
-            ]
-        
+        # 计算四个角点3D坐标（XYZ正向：右下前）
+        corners = [
+            self.calculate_3d_position(obj_data['bbox'][0], depth),  # 左上前角点
+            self.calculate_3d_position([obj_data['bbox'][1][0], obj_data['bbox'][0][1]], depth),  # 右上前角点
+            self.calculate_3d_position([obj_data['bbox'][0][0], obj_data['bbox'][1][1]], depth),  # 左下前角点
+            self.calculate_3d_position(obj_data['bbox'][1], depth)  # 右下前角点
+        ]
+        # 计算四个角点所在的球体球心，半径为最大边长的一半
+        max_length = max(
+            self.calculate_distance(corners[0], corners[3]),
+            self.calculate_distance(corners[1], corners[2])
+        )*0.55
+
+        obj3d['center'] = self.calculate_sphere_centers(corners, max_length)
+        # 向外膨胀0.3m
+        obj3d['safe_distance'] = round(max_length+safe_distance, 2)
         return obj3d
 
 
@@ -275,7 +305,7 @@ class Target3DProcessor:
         self.lsam_processor = LSamProcessor()
         self.target_3d_modeler = Target3DModeler()
     
-    def process_targets(self, rgb_image, detect_result, depth_data):
+    def process_targets(self, rgb_image, detect_result, depth_data, safe_distance=0.3):
         """
         处理检测结果，构建3D目标模型
         
@@ -307,10 +337,35 @@ class Target3DProcessor:
             
             # 构建3D模型
             obj3d = self.target_3d_modeler.create_3d_model(
-                rgb_coordinates_lsam_result, depth_data, index
+                rgb_coordinates_lsam_result, depth_data, index, safe_distance
             )
             if obj3d is not None:
                 object_dict_for3d_list.append(obj3d)
-        
-        
+
         return object_dict_for3d_list
+
+    def reshape_cubemodel_data(self,orignal3dmodel):
+        cube_data = {}
+        cube_data['object_name'] = orignal3dmodel['label']
+        cube_data['mass_center'] = orignal3dmodel['mass_center']
+        cube_data['cube_center'] = orignal3dmodel['cube_center']
+        cube_data['bbox3d'] = {"front_top_left":orignal3dmodel['bbox3dfront'][0],
+                                "front_top_right":orignal3dmodel['bbox3dfront'][2],
+                                "front_bottom_left":orignal3dmodel['bbox3dfront'][3],
+                                "front_bottom_right":orignal3dmodel['bbox3dfront'][1],
+                                "back_top_left":orignal3dmodel['bbox3dback'][0],
+                                "back_top_right":orignal3dmodel['bbox3dback'][2],
+                                "back_bottom_left":orignal3dmodel['bbox3dback'][3],
+                                "back_bottom_right":orignal3dmodel['bbox3dback'][1]}
+
+        return cube_data
+
+
+    def reshape_spheremodel_data(self,orignal3dmodel):
+        sphere_data = {}
+        sphere_data['object_name'] = orignal3dmodel['label']
+        sphere_data['mass_center'] = orignal3dmodel['mass_center']
+        sphere_data['sphere_center'] = orignal3dmodel['sphere_center']
+        sphere_data['radius'] = orignal3dmodel['radius']
+        
+        return sphere_data

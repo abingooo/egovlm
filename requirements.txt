@@ -1,0 +1,52 @@
+# 视觉语言模型相关
+google-genai
+openai>=1.0.0
+distro>=1.8.0
+
+# 图像处理
+opencv-python>=4.8.0
+pillow>=9.5.0
+
+# 数值计算
+numpy>=1.24.0
+
+# 网络请求
+requests>=2.31.0
+
+# 点云处理
+open3d>=0.17.0
+
+# 绘图
+matplotlib>=3.7.0
+
+# 日志处理
+logging
+
+# 依赖项补充（解决supervision依赖问题）
+defusedxml>=0.7.1
+pyyaml>=5.3# 视觉语言模型相关
+google-genai
+openai>=1.0.0
+
+# 图像处理
+opencv-python>=4.8.0
+pillow>=9.5.0
+
+# 数值计算
+numpy>=1.24.0
+
+# 网络请求
+requests>=2.31.0
+
+# 点云处理
+open3d>=0.17.0
+
+# 绘图
+matplotlib>=3.7.0
+
+# 日志处理
+logging
+
+# 依赖项补充（解决supervision依赖问题）
+defusedxml>=0.7.1
+pyyaml>=5.3

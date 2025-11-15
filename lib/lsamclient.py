@@ -5,7 +5,7 @@ from PIL import Image
 import io
 import os
 
-def getLSamResult(image_input, text_prompt, server_ip="172.16.1.61", server_port=5000):
+def getLSamResult(image_input, text_prompt, server_ip="127.0.0.1", server_port=5002):
     """
     调用服务器进行图像分割和分析
     
@@ -242,12 +242,12 @@ def visualize_result(image_path, result_json, server_ip="127.0.0.1", server_port
 # 示例用法
 if __name__ == "__main__":
     # 设置服务器地址和端口
-    SERVER_IP = "172.16.1.61"
-    SERVER_PORT = 5000
+    SERVER_IP = "127.0.0.1"
+    SERVER_PORT = 5002
     
     # 设置图像路径和文本提示
-    image_path = "./debug/rgb_image_preview.jpeg"  # 替换为实际图像路径
-    text_prompt = "chair"  # 替换为实际文本提示
+    image_path = "/home/uav/DataDisk/PAB/egovlm/log/rgb_image.jpg"  # 替换为实际图像路径
+    text_prompt = "tree"  # 替换为实际文本提示
     
     # 执行分割
     print(f"\n正在分割图像: {image_path}")

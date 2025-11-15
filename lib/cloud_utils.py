@@ -23,6 +23,8 @@ class PointCloudUtils:
     # 新增颜色定义
     PINK = [255, 0, 255]   # 品红色：用于立方体角点
     LIGHT_BLUE = [173, 216, 230]  # 淡蓝色：用于质心点
+    ORANGE = [255, 165, 0] # 橙色：用于质量中心
+    CYAN = [0, 255, 255]   # 青色：用于立方体中心
     
     def __init__(self):
         """初始化点云工具类"""
@@ -795,7 +797,7 @@ class PointCloudUtils:
         
         return new_path
 
-    def process_point_cloud(self, input_ply_path=None, depth_data=None, rgb_image=None, annotation_data=None, modeling_type=None, 
+    def process_point_cloud(self, input_ply_path=None, depth_data=None, rgb_image=None, annotation_data=None, extend_distance=0.3, modeling_type=None, 
                                           output_ply_path=None, show_visualization=False, 
                                           fx=383.19929174573906, fy=384.76715878730715, 
                                           cx=317.944484051631, cy=231.71115593384292, 
@@ -807,9 +809,10 @@ class PointCloudUtils:
             depth_data: 深度图像数据（如果使用深度数据生成点云）
             rgb_image: RGB彩色图像数据（如果使用深度数据生成点云）
             annotation_data: 用于添加标注的数据，根据modeling_type不同格式不同
-                            - 对于"cube"类型: [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...]
+                            - 对于"cube"类型: [[centroid_x, centroid_y, centroid_z], [corner1_x, corner1_y, corner1_z], ...] 或字典格式
                             - 对于"path"类型: [[x1, y1, z1], [x2, y2, z2], ...]
-                            - 对于"sphere"类型: [[x1, y1, z1, r1], [x2, y2, z2, r2], ...]，其中r是球体半径
+                            - 对于"sphere"类型: [[x1, y1, z1, r1], [x2, y2, z2, r2], ...]，或字典格式，
+                              或新格式字典: {'id': int, 'label': str, 'center': [x, y, z], 'radius': float}
             modeling_type: 建模类型，可选值: "cube"(立方体)、"path"(路线)或"sphere"(球体)
             output_ply_path: 输出PLY文件路径
             show_visualization: 是否使用Open3D显示点云，默认为False
@@ -832,7 +835,7 @@ class PointCloudUtils:
                 # 从深度数据和RGB图像生成点云
                 rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
                 points_3d, colors = self.depth_to_point_cloud(depth_data, rgb_image, fx, fy, cx, cy)
-                print("从深度数据和RGB图像生成点云")
+                # print("从深度数据和RGB图像生成点云")
             
             if len(points_3d) == 0:
                 print("错误: 点云数据为空")
@@ -845,20 +848,55 @@ class PointCloudUtils:
             # 2. 根据建模类型添加标注
             if modeling_type.lower() == "cube":
                 # 立方体建模类型
-                if len(annotation_data) < 9:
-                    print("错误: 立方体建模需要至少9个点（1个质心和8个角点）")
-                    return
-                
-                # 提取质心和8个角点
-                centroid = annotation_data[0]
-                corner_points = annotation_data[1:9]
-                
-                # 添加质心点（红色球体）
-                centroid_points, centroid_colors = self._generate_sphere_points(
-                    centroid, radius, 1000, self.RED
-                )
-                all_points.extend(centroid_points)
-                all_colors.extend(centroid_colors)
+                # 检查是否为新的cubemodel格式（字典类型）
+                if isinstance(annotation_data, dict):
+                    # 从字典中提取数据
+                    mass_center = annotation_data.get('mass_center', [0, 0, 0])
+                    cube_center = annotation_data.get('cube_center', [0, 0, 0])
+                    bbox3d = annotation_data.get('bbox3d', {})
+                    
+                    # 提取8个角点
+                    corner_points = [
+                        bbox3d.get('front_top_left', [0, 0, 0]),
+                        bbox3d.get('front_bottom_right', [0, 0, 0]),
+                        bbox3d.get('front_top_right', [0, 0, 0]),
+                        bbox3d.get('front_bottom_left', [0, 0, 0]),
+                        bbox3d.get('back_top_left', [0, 0, 0]),
+                        bbox3d.get('back_bottom_right', [0, 0, 0]),
+                        bbox3d.get('back_top_right', [0, 0, 0]),
+                        bbox3d.get('back_bottom_left', [0, 0, 0])
+                    ]
+                    
+                    # 添加质量中心（橙色球体）
+                    mass_center_points, mass_center_colors = self._generate_sphere_points(
+                        mass_center, radius, 1000, self.ORANGE
+                    )
+                    all_points.extend(mass_center_points)
+                    all_colors.extend(mass_center_colors)
+                    print(f"添加质量中心: {mass_center} (橙色)")
+                    
+                    # 添加立方体中心（青色球体）
+                    cube_center_points, cube_center_colors = self._generate_sphere_points(
+                        cube_center, radius, 1000, self.CYAN
+                    )
+                    all_points.extend(cube_center_points)
+                    all_colors.extend(cube_center_colors)
+                    print(f"添加立方体中心: {cube_center} (青色)")
+                else:
+                    # 旧格式：列表
+                    if len(annotation_data) < 9:
+                        print("错误: 立方体建模需要至少9个点（1个质心和8个角点）")
+                        return
+                    # 提取质心和8个角点
+                    centroid = annotation_data[0]
+                    corner_points = annotation_data[1:9]
+                    
+                    # 添加质心点（红色球体）- 旧格式保持兼容性
+                    centroid_points, centroid_colors = self._generate_sphere_points(
+                        centroid, radius, 1000, self.RED
+                    )
+                    all_points.extend(centroid_points)
+                    all_colors.extend(centroid_colors)
                 
                 # 绘制立方体的12条边（品红色）
                 # 顺序为：左上前(0)、右下前(1)、右上前(2)、左下前(3)、左上后(4)、右下后(5)、右上后(6)、左下后(7)
@@ -925,33 +963,36 @@ class PointCloudUtils:
                         all_points.extend(sphere_points)
                         all_colors.extend(sphere_colors)
             elif modeling_type.lower() == "sphere":
-                # 球体建模类型
-                if len(annotation_data) < 1:
-                    print("错误: 球体建模需要至少1个球体数据")
-                    return
+                sphere_center = annotation_data['center']
+                sphere_radius = annotation_data['safe_distance']
+
+                # 添加球体中心（橙色球体）
+                sphere_center_points, sphere_center_colors = self._generate_sphere_points(
+                    sphere_center, sphere_radius/10, 500, self.ORANGE
+                )
+                all_points.extend(sphere_center_points)
+                all_colors.extend(sphere_center_colors)
+                # print(f"添加球体中心: {sphere_center} (橙色)，半径: {sphere_radius/10}")
                 
-                # 每个球体数据格式：[x, y, z, r]，其中r是球体半径
-                for sphere_data in annotation_data:
-                    if len(sphere_data) < 4:
-                        print("错误: 球体数据格式应为[x, y, z, r]")
-                        continue
-                    
-                    x, y, z, sphere_radius = sphere_data[:4]
-                    center = [x, y, z]
-                    
-                    # 使用LIGHT_BLUE颜色表示球体，使用球体数据中指定的半径
-                    sphere_points, sphere_colors = self._generate_sphere_points(
-                        center, sphere_radius, 1000, self.BLUE
-                    )
-                    all_points.extend(sphere_points)
-                    all_colors.extend(sphere_colors)
+                # 添加膨胀球体（半透明青色）
+                full_sphere_points, full_sphere_colors = self._generate_sphere_points(
+                    sphere_center, sphere_radius, 1000, self.CYAN
+                )
+                all_points.extend(full_sphere_points)
+                all_colors.extend(full_sphere_colors)
+
+                # 添加真实球体（绿色）
+                full_sphere_points, full_sphere_colors = self._generate_sphere_points(
+                    sphere_center, sphere_radius-extend_distance, 1000, self.PINK
+                )
+                all_points.extend(full_sphere_points)
+                all_colors.extend(full_sphere_colors)
+
             else:
                 print(f"错误: 不支持的建模类型 '{modeling_type}'，可选值为 'cube'、'path' 或 'sphere'")
                 return
             
-            # 3. 创建唯一的输出文件名
-            # output_ply_path = self.get_next_filename(output_ply_path)
-            
+            # 3. 创建唯一的输出文件名   
             # 4. 直接保存完整的点云（原始点云+标注）到单个PLY文件
             self._save_combined_point_cloud(all_points, all_colors, output_ply_path)
             
@@ -1001,7 +1042,7 @@ class PointCloudUtils:
                         r, g, b = 0, 0, 0
                     f.write(f'{x:.6f} {y:.6f} {z:.6f} {r} {g} {b}\n')
             
-            print(f'点云构建成功: {ply_file_path}')
+            # print(f'点云构建成功: {ply_file_path}')
             # print(f'保存的点云包含 {len(all_points)} 个点')
         except Exception as e:
             print(f"保存点云到PLY文件时出错: {e}")
@@ -1023,7 +1064,7 @@ class PointCloudUtils:
             pcd.colors = o3d.utility.Vector3dVector(color_array)
             
             # 可视化点云
-            o3d.visualization.draw_geometries([pcd], window_name="点云可视化")
+            o3d.visualization.draw_geometries([pcd], window_name="3DPointCloudVisualization")
             
         except Exception as e:
             print(f"使用Open3D可视化点云时出错: {e}")
