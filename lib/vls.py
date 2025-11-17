@@ -301,11 +301,7 @@ def getDetectBBox(vlm, rgb_image, detect_prompt):
         list: 检测结果列表，包含实际像素坐标
     """
     # 调用VLM进行图像分析，获取归一化坐标的检测结果
-    response_text = vlm.analyze_image(
-        rgb_image=rgb_image,
-        prompt=detect_prompt
-    )
-    
+    response_text = vlm.generate_content(rgb_image, prompt=detect_prompt)
     try:
             normalized_result = vlm.parse_json_response(response_text)
     except json.JSONDecodeError:

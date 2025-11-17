@@ -242,7 +242,7 @@ def visualize_result(image_path, result_json, server_ip="127.0.0.1", server_port
 # 示例用法
 if __name__ == "__main__":
     # 设置服务器地址和端口
-    SERVER_IP = "127.0.0.1"
+    SERVER_IP = "172.16.1.61"
     SERVER_PORT = 5002
     
     # 设置图像路径和文本提示

@@ -55,7 +55,7 @@ class LSamProcessor:
     """
     
     @staticmethod
-    def process_lsam_result(target_region, index, server_ip="127.0.0.1", server_port=5002):
+    def process_lsam_result(target_region, index, server_ip="172.16.1.61", server_port=5002):
         """
         处理LSam服务器的分割结果
         

@@ -1,4 +1,3 @@
-from curses import start_color
 import cv2
 import numpy as np
 import json
