@@ -28,7 +28,6 @@ if __name__ == '__main__':
 
     # 获得检测提示词和规划提示词
     detect_prompt = getPrompt(ctrl_cmd)
-
     # 第一阶段：vlm根据自然语言控制指令进行目标检测
     start_time = time.time()
     print(vlm.model_id+"开始VLM检测")
@@ -58,12 +57,12 @@ if __name__ == '__main__':
                             show_visualization=False
                             )
     # 第三阶段：llm根据目标3d模型进行规划 
-    plan_cube_prompt = getPrompt(ctrl_cmd, task="plan", objects_json=target3dmodel)
+    plan_prompt = getPrompt(ctrl_cmd, task="plan", objects_json=target3dmodel)
     start_time = time.time()
     print(llm.model_id+"开始LLM规划")
     print('输入自然语言控制指令:'+ctrl_cmd)
     print('输入的场景json:'+str(target3dmodel))
-    path_points = getPlan(llm, plan_cube_prompt)
+    path_points = getPlan(llm, plan_prompt)
     end_time = time.time()
     print("LLM规划耗时:", round(end_time - start_time, 1))
     print(path_points)
