@@ -53,6 +53,11 @@ class LLM:
                 "model": self.model_id,
                 "messages": [
                     {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Before answering, think step by step with deep reasoning, then provide the final concise answer."
+                    },
+                    {
+
                         "role": "user",
                         "content": prompt
                     }

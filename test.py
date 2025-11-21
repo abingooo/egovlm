@@ -1,20 +1,14 @@
-from openai import OpenAI
+from lib.cloud_utils import PointCloudUtils
 
-if __name__ == '__main__':
-    client = OpenAI(
-        # openai系列的sdk，包括langchain，都需要这个/v1的后缀
-        base_url='https://api.zhizengzeng.com/v1',
-        api_key='sk-zk26f90a8ef46c6589207af1a58b11c4e4a68eca448256d6',
-    )
 
-    resp = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": "Hello!",
-            }
-        ],
-        model="gpt-4o-mini", # 如果是其他兼容模型，比如deepseek，直接这里改模型名即可，其他都不用动
-    )
-
-    print(resp.choices[0].message.content)
+path_points=[[0.0, 0.0, 0.0], [0.0, 0.2, 2.0], [-0.54, 0.2, 2.75], [1.723, 0.2, 3.687], [2.66, 0.2, 5.95], [1.723, 0.2, 8.213], [-0.54, 0.2, 9.15], [-2.803, 0.2, 8.213], [-3.74, 0.2, 5.95], [-2.803, 0.2, 3.687], [-0.54, 0.2, 2.75], [0.0, -1.0, 0.0]]
+print(path_points)
+pcu = PointCloudUtils()
+pcu.process_point_cloud(
+                        input_ply_path="./log/point_cloud_sphere.ply",
+                        annotation_data=path_points, 
+                        modeling_type="path", 
+                        output_ply_path="./log/point_cloud_sphere_path.ply", 
+                        show_visualization=True, 
+                        radius=0.1
+                        )

@@ -291,7 +291,7 @@ class Target3DModeler:
 
         obj3d['center'] = self.calculate_sphere_centers(corners, max_length)
         # 向外膨胀0.3m
-        obj3d['safe_distance'] = round(max_length+safe_distance, 2)
+        obj3d['safety_radius'] = round(max_length+safe_distance, 2)
         return obj3d
 
 

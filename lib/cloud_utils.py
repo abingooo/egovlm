@@ -964,7 +964,7 @@ class PointCloudUtils:
                         all_colors.extend(sphere_colors)
             elif modeling_type.lower() == "sphere":
                 sphere_center = annotation_data['center']
-                sphere_radius = annotation_data['safe_distance']
+                sphere_radius = annotation_data['safety_radius']
 
                 # 添加球体中心（橙色球体）
                 sphere_center_points, sphere_center_colors = self._generate_sphere_points(

@@ -44,7 +44,6 @@ if __name__ == '__main__':
     else:
         print("VLM检测可视化存储失败")
     
-
     # 第二阶段：lsam服务器进行目标分割，进行目标3D建模
     target3dmodel = get3DTargetModel(rgb_image, detect_result, depth_data, safe_distance=0.3)
     pcu = PointCloudUtils()
@@ -66,6 +65,7 @@ if __name__ == '__main__':
     end_time = time.time()
     print("LLM规划耗时:", round(end_time - start_time, 1))
     print(path_points)
+    pcu = PointCloudUtils()
     pcu.process_point_cloud(
                             input_ply_path="./log/point_cloud_sphere.ply",
                             annotation_data=path_points, 
